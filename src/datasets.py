@@ -52,10 +52,16 @@ class DatasetLEVIR(Dataset):
         mask = (mask > 127).astype(np.uint8)
 
         if self.transform:
-            augmented = self.transform(image=img_A, image0=img_B, mask=mask)
+            spatial_transform, color_transform = self.transform
+
+            augmented = spatial_transform(image=img_A, image0=img_B, mask=mask)
             img_A = augmented["image"]
             img_B = augmented["image0"]
             mask = augmented["mask"]
+
+            if color_transform is not None:
+                img_A = color_transform(image=img_A)["image"]
+                img_B = color_transform(image=img_B)["image"]
 
         img_A = torch.FloatTensor(img_A).permute(2, 0, 1) / 255.0
         img_B = torch.FloatTensor(img_B).permute(2, 0, 1) / 255.0
