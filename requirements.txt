@@ -2,3 +2,6 @@ numpy==2.4.2
 opencv-python==4.13.0.92
 albumentations==2.0.8
 segmentation-models-pytorch==0.5.0
+mlflow==3.10.0
+pyyaml==6.0.3
+tqdm==4.67.3
