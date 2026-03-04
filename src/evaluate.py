@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import yaml
 import argparse
 from torch.utils.data import DataLoader
@@ -9,6 +10,7 @@ from transforms import get_val_transforms
 from metrics import MetricAccumulator
 from visualize import save_prediction_grid
 from utils import collect_probs
+from postprocess import filter_small_components
 
 
 def evaluate(
@@ -16,6 +18,7 @@ def evaluate(
     checkpoint_path: str,
     save_visualizations: bool = False,
     threshold: float = 0.5,
+    min_component_pixels: int = 0,
 ):
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
@@ -45,14 +48,38 @@ def evaluate(
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     model.eval()
 
-    all_probs, all_labels = collect_probs(model, test_loader, device)
-    print(f"\nEvaluating with threshold = {threshold:.4f}")
-    test_metrics = MetricAccumulator()
-    test_metrics.update(
-        torch.from_numpy(all_probs),
-        torch.from_numpy(all_labels),
-        threshold=threshold,
+    print(
+        f"\nEvaluating with threshold = {threshold:.4f}"
+        + (
+            f", min_component_pixels = {min_component_pixels}"
+            if min_component_pixels > 0
+            else ""
+        )
     )
+    test_metrics = MetricAccumulator()
+
+    if min_component_pixels > 0:
+        # per-patch loop to preserve spatial 2D structure needed for component filtering.
+        with torch.no_grad():
+            for images, masks in test_loader:
+                probs = (
+                    torch.softmax(model(images.to(device)), dim=1)[:, 1].cpu().numpy()
+                )  # (B, H, W)
+                for i in range(probs.shape[0]):
+                    pred = (probs[i] >= threshold).astype(np.uint8)
+                    pred = filter_small_components(
+                        pred, min_pixels=min_component_pixels
+                    )
+                    test_metrics.update(
+                        torch.from_numpy(pred.astype(np.int64)), masks[i]
+                    )
+    else:
+        all_probs, all_labels = collect_probs(model, test_loader, device)
+        test_metrics.update(
+            torch.from_numpy(all_probs),
+            torch.from_numpy(all_labels),
+            threshold=threshold,
+        )
 
     m = test_metrics.compute()
 
@@ -73,10 +100,16 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", default="checkpoints/best_model.pth")
     parser.add_argument("--save-visualizations", action="store_true")
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--min-component-pixels",
+        type=int,
+        default=0,
+    )
     args = parser.parse_args()
     evaluate(
         args.config,
         args.checkpoint,
         save_visualizations=args.save_visualizations,
         threshold=args.threshold,
+        min_component_pixels=args.min_component_pixels,
     )

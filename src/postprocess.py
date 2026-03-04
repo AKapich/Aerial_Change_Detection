@@ -1,9 +1,29 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import cv2
 import torch
 from torch.utils.data import DataLoader
 from sklearn.metrics import precision_recall_curve
 from utils import collect_probs
+
+
+def filter_small_components(
+    binary_mask: np.ndarray, min_pixels: int = 150
+) -> np.ndarray:
+    """
+    Remove predicted change regions smaller than min_pixels.
+    """
+    num_labels, labeled_mask, stats, _ = cv2.connectedComponentsWithStats(
+        binary_mask.astype(np.uint8), connectivity=8
+    )
+
+    filtered = np.zeros_like(binary_mask)
+    for label_id in range(1, num_labels):  # label 0 is background
+        area = stats[label_id, cv2.CC_STAT_AREA]
+        if area >= min_pixels:
+            filtered[labeled_mask == label_id] = 1
+
+    return filtered
 
 
 def find_optimal_threshold(

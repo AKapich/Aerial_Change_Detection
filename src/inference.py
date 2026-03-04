@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from model import build_model
 from transforms import get_val_transforms
+from postprocess import filter_small_components
 
 
 def predict(
@@ -17,6 +18,7 @@ def predict(
     checkpoint_path: str,
     output_path: str = "results/prediction.png",
     threshold: float = 0.5,
+    min_component_pixels: int = 50,
 ):
 
     with open(config_path) as f:
@@ -66,10 +68,13 @@ def predict(
                 combined = torch.cat([t_A, t_B], dim=0).unsqueeze(0).to(device)
 
                 change_prob = torch.softmax(model(combined), dim=1)[0, 1].cpu().numpy()
-                patch_pred = (change_prob >= threshold).astype(
-                    np.int64
-                )  # threshold on change-class softmax probability
+                patch_pred = (change_prob >= threshold).astype(np.uint8)
                 pred_full[y : y + patch_size, x : x + patch_size] = patch_pred
+
+    if min_component_pixels > 0:
+        pred_full = filter_small_components(
+            pred_full.astype(np.uint8), min_pixels=min_component_pixels
+        )
 
     img_A_disp = img_A_full
     img_B_disp = img_B_full
@@ -96,10 +101,11 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config/baseline.yaml")
     parser.add_argument("--checkpoint", default="checkpoints/best_model.pth")
     parser.add_argument("--output", default="results/prediction.png")
+    parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.5,
+        "--min-component-pixels",
+        type=int,
+        default=50,
     )
     args = parser.parse_args()
     predict(
@@ -109,4 +115,5 @@ if __name__ == "__main__":
         args.checkpoint,
         args.output,
         threshold=args.threshold,
+        min_component_pixels=args.min_component_pixels,
     )
