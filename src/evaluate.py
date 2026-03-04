@@ -8,9 +8,15 @@ from model import build_model
 from transforms import get_val_transforms
 from metrics import MetricAccumulator
 from visualize import save_prediction_grid
+from utils import collect_probs
 
 
-def evaluate(config_path: str, checkpoint_path: str, save_visualizations: bool = False):
+def evaluate(
+    config_path: str,
+    checkpoint_path: str,
+    save_visualizations: bool = False,
+    threshold: float = 0.5,
+):
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
@@ -39,14 +45,14 @@ def evaluate(config_path: str, checkpoint_path: str, save_visualizations: bool =
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     model.eval()
 
+    all_probs, all_labels = collect_probs(model, test_loader, device)
+    print(f"\nEvaluating with threshold = {threshold:.4f}")
     test_metrics = MetricAccumulator()
-
-    with torch.no_grad():
-        for images, masks in test_loader:
-            images, masks = images.to(device), masks.to(device)
-            outputs = model(images)
-            preds = outputs.argmax(dim=1)
-            test_metrics.update(preds.cpu(), masks.cpu())
+    test_metrics.update(
+        torch.from_numpy(all_probs),
+        torch.from_numpy(all_labels),
+        threshold=threshold,
+    )
 
     m = test_metrics.compute()
 
@@ -65,9 +71,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/baseline.yaml")
     parser.add_argument("--checkpoint", default="checkpoints/best_model.pth")
-    parser.add_argument(
-        "--save-visualizations",
-        action="store_true",
-    )
+    parser.add_argument("--save-visualizations", action="store_true")
+    parser.add_argument("--threshold", type=float, default=0.5)
     args = parser.parse_args()
-    evaluate(args.config, args.checkpoint, save_visualizations=args.save_visualizations)
+    evaluate(
+        args.config,
+        args.checkpoint,
+        save_visualizations=args.save_visualizations,
+        threshold=args.threshold,
+    )

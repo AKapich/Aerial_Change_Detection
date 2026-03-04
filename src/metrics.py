@@ -13,8 +13,16 @@ class MetricAccumulator:
         self.fn = 0.0
         self.union = 0.0
 
-    def update(self, preds: torch.Tensor, targets: torch.Tensor):
-        pred_change = preds == 1
+    def update(
+        self,
+        preds: torch.Tensor,
+        targets: torch.Tensor,
+        threshold: float | None = None,
+    ):
+        if threshold is not None:
+            pred_change = preds >= threshold
+        else:
+            pred_change = preds == 1
         target_change = targets == 1
 
         self.tp += (pred_change & target_change).sum().item()

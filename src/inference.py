@@ -16,6 +16,7 @@ def predict(
     config_path: str,
     checkpoint_path: str,
     output_path: str = "results/prediction.png",
+    threshold: float = 0.5,
 ):
 
     with open(config_path) as f:
@@ -64,7 +65,10 @@ def predict(
                 t_B = torch.FloatTensor(patch_B).permute(2, 0, 1) / 255.0
                 combined = torch.cat([t_A, t_B], dim=0).unsqueeze(0).to(device)
 
-                patch_pred = model(combined).argmax(dim=1).squeeze().cpu().numpy()
+                change_prob = torch.softmax(model(combined), dim=1)[0, 1].cpu().numpy()
+                patch_pred = (change_prob >= threshold).astype(
+                    np.int64
+                )  # threshold on change-class softmax probability
                 pred_full[y : y + patch_size, x : x + patch_size] = patch_pred
 
     img_A_disp = img_A_full
@@ -92,5 +96,17 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config/baseline.yaml")
     parser.add_argument("--checkpoint", default="checkpoints/best_model.pth")
     parser.add_argument("--output", default="results/prediction.png")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+    )
     args = parser.parse_args()
-    predict(args.img_A, args.img_B, args.config, args.checkpoint, args.output)
+    predict(
+        args.img_A,
+        args.img_B,
+        args.config,
+        args.checkpoint,
+        args.output,
+        threshold=args.threshold,
+    )

@@ -11,9 +11,11 @@ from datasets import DatasetLEVIR
 from model import build_model
 from transforms import get_train_transforms, get_val_transforms
 from metrics import MetricAccumulator
+from postprocess import find_optimal_threshold
+from utils import collect_probs
 
 
-def train(config_path: str):
+def train(config_path: str, optimize_threshold: bool = False):
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
@@ -155,9 +157,20 @@ def train(config_path: str):
         mlflow.log_artifact(best_model_path)
         print(f"\nTraining complete. Best change IoU: {best_val_iou:.4f}")
 
+        if optimize_threshold:
+            # threshold optimisation on val set using best checkpoint
+            model.load_state_dict(torch.load(best_model_path, map_location=device))
+            all_probs, all_labels = collect_probs(model, val_loader, device)
+            best_threshold = find_optimal_threshold(
+                all_probs, all_labels, save_plot=True
+            )
+            mlflow.log_metric("optimal_threshold", best_threshold)
+            print(f"Optimal threshold logged: {best_threshold:.4f}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/baseline.yaml")
+    parser.add_argument("--optimize-threshold", action="store_true")
     args = parser.parse_args()
-    train(args.config)
+    train(args.config, optimize_threshold=args.optimize_threshold)
